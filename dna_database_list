@@ -1,17 +1,17 @@
-16SMicrobial
-env_nt
-est_human
-est_mouse
-est_others
-gss
-gss_annot
-htgs
-human_genomic
-nt
-other_genomic
-patnt
-refseq_genomic
-refseq_rna
-sts
-tsa_nt
+# 16SMicrobial
+# env_nt
+# est_human
+# est_mouse
+# est_others
+# gss
+# gss_annot
+# htgs
+# human_genomic
+# nt
+# other_genomic
+# patnt
+# refseq_genomic
+# refseq_rna
+# sts
+# tsa_nt
 vector

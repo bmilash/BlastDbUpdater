@@ -2,7 +2,7 @@
 # The strategy is to create an empty, local proxy file for each remote database
 # file that has the same update time as its remote counterpart. These local files
 # will comprise the "source" from which the local database files will be built.
-# The local proxy files are created by the onstart: event handler.
+# The local proxy files are created in top-level code in the Snakefile.
 # If the local database files are out of date with respect to the local proxy
 # files, the remote files will be downloaded and installed.
 # Downloading will include MD5 checksum checking.
@@ -166,49 +166,28 @@ def CreateLocalFile(rec):
 # File extensions for protein and nucleotide database files. These
 # are found on the separate parts (00,01,...) of the databases, and
 # dont include the .pal and .nal files that are present just once
-# for a given database.
-protein_extensions=[ 'phd',
-	'phi',
-	'phr',
-	'pin',
-	'pnd',
-	'pni',
-	'pog',
-	'ppd',
-	'ppi',
-	'psd',
-	'psi',
-	'psq',
-]
+# for a given database. These aren't complete lists of the extensions,
+# just the extensions that all databases have. Doing this because there's
+# no rhyme or reason to which databases have or don't have which extensions.
+protein_extensions=[ 'phr', 'pin', 'pnd', 'pni', 'pog', 'ppd', 'ppi', 'psd', 'psi', 'psq' ]
 
-dna_extensions=[ 'nhd',
-	'nhi',
-	'nhr',
-	'nin',
-	'nnd',
-	'nni',
-	'nog',
-	'nsd',
-	'nsi',
-	'nsq',
-]
+dna_extensions=[ 'nhr', 'nin', 'nnd', 'nni', 'nsd', 'nsi', 'nsq' ]
 
 wildcard_constraints:
 	piece="\d+"
 
 def CreateDirectories():
-	for subdir in ['ShadowTargz','Download','LocalTargz','DbFiles']:
+	for subdir in ['ShadowTargz','Download','DbFiles']:
 		if not os.path.exists(subdir):
 			os.mkdir(subdir)
 
-#onstart:
-	# For each file in the blast/db directory at the FTP site,
-	# create a local file with size 0 bytes with the same 
-	# create/update time as the local file. These will be
-	# local proxy for the remote the source files. Only .tar.gz
-	# files are created, and only for the databases of interest.
-	# Side effect of this is to determine which databases are single-
-	# part and which are multi-part.
+# For each file in the blast/db directory at the FTP site,
+# create a local file with size 0 bytes with the same 
+# create/update time as the local file. These will be
+# local proxy for the remote the source files. Only .tar.gz
+# files are created, and only for the databases of interest.
+# Side effect of this is to determine which databases are single-
+# part and which are multi-part.
 CreateDirectories()
 ftp = FTP(config['ftp_site'])
 ftp.login()
@@ -226,28 +205,20 @@ rule all_dna_singlepart:
 	output: touch("dna_singlepart.done")
 
 rule one_dna_singlepart:
+	input: expand("DbFiles/{dbname}.{suffix}",dbname=["{dbname}"],suffix=dna_extensions)
 	message: "Rule {rule}: updating singlepart DNA database {wildcards.dbname}."
 	output: touch("{dbname}.done")
+
+rule untar_dna_singlepart:
+	input: "Download/{dbname}.tar.gz"
+	output: expand("DbFiles/{dbname}.{suffix}",dbname=["{dbname}"],suffix=dna_extensions)
+	shell: "cd DbFiles; tar xvfz ../{input}"
+
+rule download_dna_singlepart:
+	params: ftp_site=config['ftp_site'], ftp_dir=config['ftp_dir']
+	input: "ShadowTargz/{dbname}.tar.gz"
+	output: "Download/{dbname}.tar.gz"
+	shell: "cd Download; wget {params.ftp_site}/{params.ftp_dir}/{wildcards.dbname}.tar.gz"
 	
-#rule download_all:
-#	input: expand("ShadowTargz/{targzfile}", targzfile=remote_filenames)
-#	output: expand("LocalTargz/{targzfile}", targzfile=remote_filenames)
-#
-#rule all_dna:
-#	message: "Rule {rule}: updating DNA databases."
-#	input: expand("dna_{database}.done", database=dna_database_list)
-#	output: touch("dna_all.done")
-#
-#rule one_dna:
-#	message: "Rule {rule}: updating dna database {database}."
-#	input: expand("LocalDb/{database}.{suffix}",database=["{datdabase}"],suffix=dna_extensions)
-#	output: touch("dna_{database}.done")
-#
-#rule untar_dna:
-#	message: "Rule {rule}: un-tarring {input}"
-#	input: "LocalTargz/{database}.tar.gz"
-#	output: expand("LocalDb/{database}.{suffix}",database=["{datdabase}"],suffix=dna_extensions)
-#	shell: "cd LocalDb; tar xvfz ../{input}"
-#
 rule clean:
 	shell: "rm -rf dna_singlepart.done"

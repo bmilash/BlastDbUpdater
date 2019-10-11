@@ -22,20 +22,76 @@ import os
 from ftplib import FTP
 import time
 
-def ReadDbList(filename):
+class DbInventory():
 	"""
-	ReadDbList(filename) - reads a database list from the named file,
-	and returns the database names as a list of stripped strings.
+	DbInventory objects keep track of all the target databases and
+	whether they are DNA or protein, single part or multi part, and
+	how many parts they have.
 	"""
-	dblist=[]
-	with open(filename) as dblist_file:
-		for dbname in dblist_file:
-			if not dbname.startswith('#'):
-				dblist.append(dbname.strip())
-	return dblist
+	def __init__(self):
+		self.dna_databases=set()
+		self.protein_databases=set()
+		self.single_part=set()
+		self.multi_part=set()
+		self.db_part_count=dict()
 	
-def get_database_lists():
-	return ReadDbList("dna_database_list") + ReadDbList("protein_database_list")
+	def __str__(self):
+		return f"DbInventory: dna_databases: {self.dna_databases} protein_databases: {self.protein_databases} single_part: {self.single_part} multi_part: {self.multi_part} db_part_count: {self.db_part_count}"
+	
+	def ListSinglepartDNA(self):
+		dbnames=[]
+		for dbname in self.dna_databases:
+			if self.is_singlepart(dbname):
+				dbnames.append(dbname)
+		return dbnames
+
+	def is_dna(self,dbname):
+		return dbname in self.dna_databases
+	
+	def is_protein(self,dbname):
+		return dbname in self.protein_databases
+	
+	def is_singlepart(self,dbname):
+		return self.db_part_count[dbname] == 1
+	
+	def is_multipart(self,dbname):
+		return self.db_part_count[dbname] > 1
+	
+	def add_part(self,dbname):
+		try:
+			self.db_part_count[dbname]+=1
+			self.single_part.remove(dbname)
+			self.multi_part.add(dbname)
+		except KeyError:
+			self.db_part_count[dbname]=1
+			self.single_part.add(dbname)
+	
+	def __contains__(self,item):
+		"""
+		This method enables 'database in dbinventory'.
+		"""
+		return item in self.dna_databases or item in self.protein_databases
+
+	def ReadDbList(self,filename,dna=True):
+		"""
+		Reads a database list from the named file,
+		and stores the database names
+		"""
+		dblist=[]
+		with open(filename) as dblist_file:
+			for dbname in dblist_file:
+				if dbname.startswith('#'):
+					continue
+				if dna:
+					self.dna_databases.add(dbname.strip())
+				else:
+					self.protein_databasess.add(dbname.strip())
+	
+
+# Create and initialize the database inventory.
+dbinventory=DbInventory()
+dbinventory.ReadDbList("dna_database_list",dna=True)
+dbinventory.ReadDbList("protein_database_list",dna=False)
 
 def CalcTime(time_str):
 	"""
@@ -90,35 +146,21 @@ def touch_file(fname,update_time_seconds=None,directory="ShadowTargz"):
 	# Set the update time of the file.
 	os.utime(fname,(update_time_seconds,update_time_seconds))
 
-remote_filenames=[]
-database_list=get_database_lists()
-dna_database_list=ReadDbList("dna_database_list")
-database_pieces={}
 
-def RecordPiece(basename,piece):
-	global database_pieces
-	if basename not in database_pieces:
-		database_pieces[basename]=[]
-	if piece is not None:
-		database_pieces[basename].append(piece)
+remote_filenames=[]
 
 def CreateLocalFile(rec):
 	global remote_filenames
-	global database_list
+	global dbinventory
 	if rec.startswith('#'):
 		return
 	f = rec.strip().split()
 	fname=f[-1]
 	time_str=' '.join(f[5:8])
 	basename=fname.split('.')[0]
-	if basename in database_list and fname.endswith(".tar.gz"):
+	if basename in dbinventory and fname.endswith(".tar.gz"):
 		remote_filenames.append(fname)
-		if len(fname.split('.')) == 4:
-			# Database has multiple pieces (00, 01, etc)
-			RecordPiece(basename,fname.split('.')[1])
-		else:
-			# Database has a single piece.
-			RecordPiece(basename,None)
+		dbinventory.add_part(basename)
 		touch_file(fname,CalcTime(time_str))
 
 # File extensions for protein and nucleotide database files. These
@@ -155,51 +197,57 @@ wildcard_constraints:
 	piece="\d+"
 
 def CreateDirectories():
-	for subdir in ['ShadowTargz','Download','LocalTargz','LocalDb']:
+	for subdir in ['ShadowTargz','Download','LocalTargz','DbFiles']:
 		if not os.path.exists(subdir):
 			os.mkdir(subdir)
 
-onstart:
+#onstart:
 	# For each file in the blast/db directory at the FTP site,
 	# create a local file with size 0 bytes with the same 
 	# create/update time as the local file. These will be
 	# local proxy for the remote the source files. Only .tar.gz
 	# files are created, and only for the databases of interest.
-	CreateDirectories()
-	ftp = FTP(config['ftp_site'])
-	ftp.login()
-	ftp.cwd(config['ftp_dir'])
-	ftp.retrlines('LIST',CreateLocalFile)
-	print(f"remote_filenames: {remote_filenames}")
-	print(f"Database pieces: {database_pieces}")
+	# Side effect of this is to determine which databases are single-
+	# part and which are multi-part.
+CreateDirectories()
+ftp = FTP(config['ftp_site'])
+ftp.login()
+ftp.cwd(config['ftp_dir'])
+ftp.retrlines('LIST',CreateLocalFile)
+print(dbinventory)
 
 rule all:
-	input: expand("LocalTargz/{targzfile}", targzfile=remote_filenames)
-	output: touch("all.done")
+	message: "Rule {rule}: all databases updated."
+	input: "dna_singlepart.done", "dna_multipart.done", "protein_singlepart.done", "protein_multipart.done"
 
-rule download_all:
-	input: expand("ShadowTargz/{targzfile}", targzfile=remote_filenames)
-	output: expand("LocalTargz/{targzfile}", targzfile=remote_filenames)
+rule all_dna_singlepart:
+	message: "Rule {rule}: all singlepart DNA databases updated."
+	input: expand("{dbname}.done", dbname=dbinventory.ListSinglepartDNA())
+	output: touch("dna_singlepart.done")
 
-rule download_one:
-	output: expand("ShadowTargz/{targzfile}", targzfile=remote_filenames)
-	run:
-
-rule all_dna:
-	message: "Rule {rule}: updating DNA databases."
-	input: expand("dna_{database}.done", database=dna_database_list)
-	output: touch("dna_all.done")
-
-rule one_dna:
-	message: "Rule {rule}: updating dna database {database}."
-	input: expand("LocalDb/{database}.{suffix}",suffix=dna_extensions)
-	output: touch("dna_{database}.done")
-
-rule untar_dna:
-	message: "Rule {rule}: un-tarring {input}"
-	input: "LocalTargz/{database}.tar.gz"
-	output: expand("LocalDb/{database}.{suffix}",suffix=dna_extensions)
-	shell: "cd LocalDb; tar xvfz ../{input}"
-
+rule one_dna_singlepart:
+	message: "Rule {rule}: updating singlepart DNA database {wildcards.dbname}."
+	output: touch("{dbname}.done")
+	
+#rule download_all:
+#	input: expand("ShadowTargz/{targzfile}", targzfile=remote_filenames)
+#	output: expand("LocalTargz/{targzfile}", targzfile=remote_filenames)
+#
+#rule all_dna:
+#	message: "Rule {rule}: updating DNA databases."
+#	input: expand("dna_{database}.done", database=dna_database_list)
+#	output: touch("dna_all.done")
+#
+#rule one_dna:
+#	message: "Rule {rule}: updating dna database {database}."
+#	input: expand("LocalDb/{database}.{suffix}",database=["{datdabase}"],suffix=dna_extensions)
+#	output: touch("dna_{database}.done")
+#
+#rule untar_dna:
+#	message: "Rule {rule}: un-tarring {input}"
+#	input: "LocalTargz/{database}.tar.gz"
+#	output: expand("LocalDb/{database}.{suffix}",database=["{datdabase}"],suffix=dna_extensions)
+#	shell: "cd LocalDb; tar xvfz ../{input}"
+#
 rule clean:
-	shell: "rm -rf dna_all.done"
+	shell: "rm -rf dna_singlepart.done"

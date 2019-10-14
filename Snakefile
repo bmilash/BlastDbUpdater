@@ -21,6 +21,7 @@ configfile: "config.yaml"
 import os
 from ftplib import FTP
 import time
+import sys
 
 class DbInventory():
 	"""
@@ -34,9 +35,10 @@ class DbInventory():
 		self.single_part=set()
 		self.multi_part=set()
 		self.db_part_count=dict()
+		self.db_parts=dict()
 	
 	def __str__(self):
-		return f"DbInventory: dna_databases: {self.dna_databases} protein_databases: {self.protein_databases} single_part: {self.single_part} multi_part: {self.multi_part} db_part_count: {self.db_part_count}"
+		return f"DbInventory: dna_databases: {self.dna_databases} protein_databases: {self.protein_databases} single_part: {self.single_part} multi_part: {self.multi_part} db_part_count: {self.db_part_count} db_parts: {self.db_parts}"
 	
 	def ListSinglepartDNA(self):
 		dbnames=[]
@@ -44,6 +46,18 @@ class DbInventory():
 			if self.is_singlepart(dbname):
 				dbnames.append(dbname)
 		return dbnames
+	
+	def ListMultipartDNA(self):
+		dbnames=[]
+		for dbname in self.dna_databases:
+			if self.is_multipart(dbname):
+				dbnames.append(dbname)
+		return dbnames
+
+	def ListDbParts(self,dbname):
+		"Returns a list of the db part names (00,01,etc) for the given database."
+		parts=[f"{i:02d}" for i in range(0,self.db_part_count[dbname])]
+		return parts
 
 	def is_dna(self,dbname):
 		return dbname in self.dna_databases
@@ -57,14 +71,16 @@ class DbInventory():
 	def is_multipart(self,dbname):
 		return self.db_part_count[dbname] > 1
 	
-	def add_part(self,dbname):
+	def add_part(self,dbname,part_name):
 		try:
 			self.db_part_count[dbname]+=1
 			self.single_part.remove(dbname)
 			self.multi_part.add(dbname)
+			self.db_parts[dbname].append(part_name)
 		except KeyError:
 			self.db_part_count[dbname]=1
 			self.single_part.add(dbname)
+			self.db_parts[dbname]=[part_name]
 	
 	def __contains__(self,item):
 		"""
@@ -160,8 +176,16 @@ def CreateLocalFile(rec):
 	basename=fname.split('.')[0]
 	if basename in dbinventory and fname.endswith(".tar.gz"):
 		remote_filenames.append(fname)
-		dbinventory.add_part(basename)
 		touch_file(fname,CalcTime(time_str))
+		# Parse file name to get part string, and
+		# add that to dbinventory.db_parts dict.
+		z=fname.split('.')
+		if len(z)==4:
+			# Has a part string.
+			part_name=z[1]
+		else:
+			part_name=''
+		dbinventory.add_part(basename,part_name)
 
 # File extensions for protein and nucleotide database files. These
 # are found on the separate parts (00,01,...) of the databases, and
@@ -174,7 +198,8 @@ protein_extensions=[ 'phr', 'pin', 'pnd', 'pni', 'pog', 'ppd', 'ppi', 'psd', 'ps
 dna_extensions=[ 'nhr', 'nin', 'nnd', 'nni', 'nsd', 'nsi', 'nsq' ]
 
 wildcard_constraints:
-	piece="\d+"
+	part="\d+",
+	dbname="[0-9A-Za-z_]*"
 
 def CreateDirectories():
 	for subdir in ['ShadowTargz','Download','DbFiles']:
@@ -193,21 +218,50 @@ ftp = FTP(config['ftp_site'])
 ftp.login()
 ftp.cwd(config['ftp_dir'])
 ftp.retrlines('LIST',CreateLocalFile)
-print(dbinventory)
+print(dbinventory,file=sys.stderr)
 
 rule all:
 	message: "Rule {rule}: all databases updated."
-	input: "dna_singlepart.done", "dna_multipart.done", "protein_singlepart.done", "protein_multipart.done"
+	#input: "dna_sp.done", "dna_mp.done", "protein_sp.done", "protein_mp.done"
+	input: "dna_sp.done", "dna_mp.done"
+
+# --- DNA multipart rules ---
+
+rule all_dna_multipart:
+	message: "Rule {rule}: all multipart DNA databases updated."
+	input: expand("{dbname}_mp.done", dbname=dbinventory.ListMultipartDNA())
+	output: touch("dna_mp.done")
+
+rule one_dna_multipart_all:
+	message: "Rule {rule}: updating multipart DNA database {wildcards.dbname}."
+	#input: expand("DbFiles/{dbname}.{part}.{suffix}",dbname=["{dbname}"],part=dbinventory.ListDbParts("{dbname}"),suffix=dna_extensions)
+	input: lambda wildcards: expand("DbFiles/{dbname}.{part}.{suffix}",dbname=["{dbname}"],part=dbinventory.db_parts[wildcards.dbname],suffix=dna_extensions)
+	output: touch("{dbname}_mp.done")
+
+rule untar_dna_multipart_single:
+	message: "Rule {rule}: untarring {input}."
+	input: "Download/{dbname}.{part}.tar.gz"
+	output: expand("DbFiles/{dbname}.{part}.{suffix}",dbname=["{dbname}"],part=["{part}"],suffix=dna_extensions)
+	shell: "cd DbFiles; tar xvfz ../{input}"
+
+rule download_dna_multipart_single:
+	message: "Rule {rule}: downloading {input}."
+	params: ftp_site=config['ftp_site'], ftp_dir=config['ftp_dir']
+	input: "ShadowTargz/{dbname}.{part}.tar.gz"
+	output: "Download/{dbname}.{part}.tar.gz"
+	shell: "cd Download; wget {params.ftp_site}/{params.ftp_dir}/{wildcards.dbname}.{wildcards.part}.tar.gz"
+
+# --- DNA singlepart rules ---
 
 rule all_dna_singlepart:
 	message: "Rule {rule}: all singlepart DNA databases updated."
-	input: expand("{dbname}.done", dbname=dbinventory.ListSinglepartDNA())
-	output: touch("dna_singlepart.done")
+	input: expand("{dbname}_sp.done", dbname=dbinventory.ListSinglepartDNA())
+	output: touch("dna_sp.done")
 
 rule one_dna_singlepart:
-	input: expand("DbFiles/{dbname}.{suffix}",dbname=["{dbname}"],suffix=dna_extensions)
 	message: "Rule {rule}: updating singlepart DNA database {wildcards.dbname}."
-	output: touch("{dbname}.done")
+	input: expand("DbFiles/{dbname}.{suffix}",dbname=["{dbname}"],suffix=dna_extensions)
+	output: touch("{dbname}_sp.done")
 
 rule untar_dna_singlepart:
 	input: "Download/{dbname}.tar.gz"
@@ -219,6 +273,7 @@ rule download_dna_singlepart:
 	input: "ShadowTargz/{dbname}.tar.gz"
 	output: "Download/{dbname}.tar.gz"
 	shell: "cd Download; wget {params.ftp_site}/{params.ftp_dir}/{wildcards.dbname}.tar.gz"
-	
+
+# --- other rules ---
 rule clean:
-	shell: "rm -rf dna_singlepart.done"
+	shell: "rm -rf dna_sp.done dna_mp.done"

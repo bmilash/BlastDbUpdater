@@ -1,3 +1,4 @@
 *.done
 *.tar.gz
 .snakemake
+DbFiles

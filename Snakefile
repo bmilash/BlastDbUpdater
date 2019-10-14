@@ -173,10 +173,7 @@ def touch_file(fname,update_time_seconds=None,directory="ShadowTargz"):
 	os.utime(fname,(update_time_seconds,update_time_seconds))
 
 
-remote_filenames=[]
-
 def CreateLocalFile(rec):
-	global remote_filenames
 	global dbinventory
 	if rec.startswith('#'):
 		return
@@ -185,7 +182,6 @@ def CreateLocalFile(rec):
 	time_str=' '.join(f[5:8])
 	basename=fname.split('.')[0]
 	if basename in dbinventory and fname.endswith(".tar.gz"):
-		remote_filenames.append(fname)
 		touch_file(fname,CalcTime(time_str))
 		# Parse file name to get part string, and
 		# add that to dbinventory.db_parts dict.
@@ -302,4 +298,4 @@ rule download_singlepart:
 
 # --- other rules ---
 rule clean:
-	shell: "rm -f *.done DbFiles/* Download/* ShadowTargz/*"
+	shell: "rm -rf *.done DbFiles Download ShadowTargz"

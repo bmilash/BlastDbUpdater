@@ -6,16 +6,19 @@
 # If the local database files are out of date with respect to the local proxy
 # files, the remote files will be downloaded and installed.
 # Downloading will include MD5 checksum checking.
-# Un-tarring and installing is tricky, as there are 4 different types of
-# databases: DNA vs Protein, and single-part vs multi-part.
+# Un-tarring and installing is tricky, as there are 3 different types of
+# databases: DNA single part, DNA multipart, and protein multipart.
 # DNA and Protein database files have different filename extensions.
 # Single-part and multi-part database filenames differ in that multi-part
 # database filenames include a part number, for example human_genomic.<part>.<extension>.
 # The multi-part databases also have a ".nal" or ".pal" component that links all
 # the parts together.
+# It seems there are no single-part protein databases. The smaller protein databases
+# use the multipart format (with part number 00 in the file names). Too bad the
+# small DNA databases don't do the same thing!
 #
-# Given that there are 4 different types of databases, the top level rule will have
-# 4 inputs, one for each database type.
+# Given that there are 3 different types of databases, the top level rule will have
+# 3 inputs, one for each database type.
 configfile: "config.yaml"
 
 import os
@@ -44,6 +47,13 @@ class DbInventory():
 		dbnames=[]
 		for dbname in self.dna_databases:
 			if self.is_singlepart(dbname):
+				dbnames.append(dbname)
+		return dbnames
+	
+	def ListMultipartProtein(self):
+		dbnames=[]
+		for dbname in self.protein_databases:
+			if self.is_multipart(dbname):
 				dbnames.append(dbname)
 		return dbnames
 	
@@ -101,7 +111,7 @@ class DbInventory():
 				if dna:
 					self.dna_databases.add(dbname.strip())
 				else:
-					self.protein_databasess.add(dbname.strip())
+					self.protein_databases.add(dbname.strip())
 	
 
 # Create and initialize the database inventory.
@@ -222,8 +232,25 @@ print(dbinventory,file=sys.stderr)
 
 rule all:
 	message: "Rule {rule}: all databases updated."
-	#input: "dna_sp.done", "dna_mp.done", "protein_sp.done", "protein_mp.done"
-	input: "dna_sp.done", "dna_mp.done"
+	input: "dna_sp.done", "dna_mp.done", "protein_multipart.done"
+
+# --- Protein multipart rules ---
+
+rule all_protein_multipart:
+	message: "Rule {rule}: all multipart protein databases updated."
+	input: expand("{dbname}_mp_protein.done", dbname=dbinventory.ListMultipartProtein())
+	output: touch("protein_multipart.done")
+
+rule one_protein_multipart_all:
+	message: "Rule {rule}: updating multipart protein database {wildcards.dbname}."
+	input: lambda wildcards: expand("DbFiles/{dbname}.{part}.{suffix}",dbname=["{dbname}"],part=dbinventory.db_parts[wildcards.dbname],suffix=protein_extensions)
+	output: touch("{dbname}_mp_protein.done")
+
+rule untar_protein_multipart_single:
+	message: "Rule {rule}: untarring {input}."
+	input: "Download/{dbname}.{part}.tar.gz"
+	output: expand("DbFiles/{dbname}.{part}.{suffix}",dbname=["{dbname}"],part=["{part}"],suffix=protein_extensions)
+	shell: "cd DbFiles; tar xvfz ../{input}"
 
 # --- DNA multipart rules ---
 
@@ -234,7 +261,6 @@ rule all_dna_multipart:
 
 rule one_dna_multipart_all:
 	message: "Rule {rule}: updating multipart DNA database {wildcards.dbname}."
-	#input: expand("DbFiles/{dbname}.{part}.{suffix}",dbname=["{dbname}"],part=dbinventory.ListDbParts("{dbname}"),suffix=dna_extensions)
 	input: lambda wildcards: expand("DbFiles/{dbname}.{part}.{suffix}",dbname=["{dbname}"],part=dbinventory.db_parts[wildcards.dbname],suffix=dna_extensions)
 	output: touch("{dbname}_mp.done")
 
@@ -244,7 +270,7 @@ rule untar_dna_multipart_single:
 	output: expand("DbFiles/{dbname}.{part}.{suffix}",dbname=["{dbname}"],part=["{part}"],suffix=dna_extensions)
 	shell: "cd DbFiles; tar xvfz ../{input}"
 
-rule download_dna_multipart_single:
+rule download_multipart_single:
 	message: "Rule {rule}: downloading {input}."
 	params: ftp_site=config['ftp_site'], ftp_dir=config['ftp_dir']
 	input: "ShadowTargz/{dbname}.{part}.tar.gz"
@@ -268,7 +294,7 @@ rule untar_dna_singlepart:
 	output: expand("DbFiles/{dbname}.{suffix}",dbname=["{dbname}"],suffix=dna_extensions)
 	shell: "cd DbFiles; tar xvfz ../{input}"
 
-rule download_dna_singlepart:
+rule download_singlepart:
 	params: ftp_site=config['ftp_site'], ftp_dir=config['ftp_dir']
 	input: "ShadowTargz/{dbname}.tar.gz"
 	output: "Download/{dbname}.tar.gz"
@@ -276,4 +302,4 @@ rule download_dna_singlepart:
 
 # --- other rules ---
 rule clean:
-	shell: "rm -rf dna_sp.done dna_mp.done"
+	shell: "rm -f *.done DbFiles/* Download/* ShadowTargz/*"

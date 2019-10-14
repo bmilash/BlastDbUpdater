@@ -208,7 +208,7 @@ wildcard_constraints:
 	dbname="[0-9A-Za-z_]*"
 
 def CreateDirectories():
-	for subdir in ['ShadowTargz','Download','DbFiles']:
+	for subdir in ['ShadowTargz','Download','DbFiles','Quarantine']:
 		if not os.path.exists(subdir):
 			os.mkdir(subdir)
 
@@ -294,8 +294,24 @@ rule download_singlepart:
 	params: ftp_site=config['ftp_site'], ftp_dir=config['ftp_dir']
 	input: "ShadowTargz/{dbname}.tar.gz"
 	output: "Download/{dbname}.tar.gz"
-	shell: "cd Download; wget {params.ftp_site}/{params.ftp_dir}/{wildcards.dbname}.tar.gz"
+	shell: """
+		cd Download
+		wget {params.ftp_site}/{params.ftp_dir}/{wildcards.dbname}.tar.gz
+		wget {params.ftp_site}/{params.ftp_dir}/{wildcards.dbname}.tar.gz.md5
+		# Test md5 checksum
+		remote=`cat {wildcards.dbname}.tar.gz.md5`
+		local=`md5sum {wildcards.dbname}.tar.gz`
+		if [ "$local" = "$remote" ]
+		then
+			echo "{wildcards.dbname}.tar.gz.md5 checksum OK."
+			exit 0
+		else
+			echo "{wildcards.dbname}.tar.gz.md5 checksum ERROR."
+			mv {wildcards.dbname}.tar.gz ../Quarantine
+			exit 1
+		fi
+		"""
 
 # --- other rules ---
 rule clean:
-	shell: "rm -rf *.done DbFiles Download ShadowTargz"
+	shell: "rm -rf *.done DbFiles Download ShadowTargz Quarantine"

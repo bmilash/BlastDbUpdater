@@ -6,6 +6,8 @@ MAINTAINER Brett Milash
 
 %environment
 
+# Here's a comment.
+
 %runscript
 exec snakemake
 

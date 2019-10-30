@@ -1,2 +1,34 @@
 ftp_site: "ftp.ncbi.nlm.nih.gov"
 ftp_dir: "blast/db"
+
+cluster-name: notchpeak
+cluster-partition: notchpeak
+cluster-account: chpc
+
+data-transfer-host: airplane04-dmz.chpc.utah.edu
+
+protein_databases:
+        - env_nr
+#       - nr
+#       - pataa
+#       - refseq_protein
+#       - swissprot
+
+dna_databases:
+        - 16SMicrobial
+        - vector
+        - est_human
+#	- env_nt
+#	- est_mouse
+#	- est_others
+#	- gss
+#	- gss_annot
+#	- htgs
+#	- human_genomic
+#	- nt
+#	- other_genomic
+#	- patnt
+#	- refseq_genomic
+#	- refseq_rna
+#	- sts
+#	- tsa_nt

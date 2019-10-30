@@ -113,11 +113,22 @@ class DbInventory():
 				else:
 					self.protein_databases.add(dbname.strip())
 	
+	def DbList(self,dblist,dna=True):
+		"""
+		Stores the given list of databases, whether dna or protein.
+		"""
+		if dna:
+			self.dna_databases = dblist[:]
+		else:
+			self.protein_databases = dblist[:]
+	
 
 # Create and initialize the database inventory.
 dbinventory=DbInventory()
-dbinventory.ReadDbList("dna_database_list",dna=True)
-dbinventory.ReadDbList("protein_database_list",dna=False)
+#dbinventory.ReadDbList("dna_database_list",dna=True)
+#dbinventory.ReadDbList("protein_database_list",dna=False)
+dbinventory.DbList(config['dna_databases'],dna=True)
+dbinventory.DbList(config['protein_databases'],dna=False)
 
 def CalcTime(time_str):
 	"""

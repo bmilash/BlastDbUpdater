@@ -12,6 +12,11 @@ Version 1.0.0
 %environment
 
 %runscript
-exec snakemake
+echo "Generating directed acyclic graph diagram -> dag.png"
+snakemake --dag | dot -Tpng > dag.png
+echo "Generating rule graph diagram -> rulegraph.png"
+snakemake --rulegraph | dot -Tpng > rulegraph.png
+echo "Running workflow in dry-run mode."
+snakemake -n
 
 %post

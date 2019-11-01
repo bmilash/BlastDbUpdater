@@ -16,7 +16,7 @@ configfile=/config.yaml
 # Determine configuration file.
 if [ $# != 0 ]
 then
-	if [ $1 == "--config" ]
+	if [ $1 = "--config" ]
 	then
 		shift
 		# Use next argument as config file. Exit if it doesn't exist.
@@ -35,4 +35,4 @@ snakemake -s /Snakefile --configfile $configfile --dag | dot -Tpng > dag.png
 echo "Generating rule graph diagram -> rulegraph.png"
 snakemake -s /Snakefile --configfile $configfile --rulegraph | dot -Tpng > rulegraph.png
 echo "Running snakemake with remaining arguments ( $* )."
-snakemake $*
+snakemake -s /Snakefile --configfile $configfile $*

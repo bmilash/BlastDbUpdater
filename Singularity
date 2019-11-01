@@ -15,6 +15,7 @@ Version 1.0.0
 configfile=/config.yaml
 # Determine configuration file.
 if [ $# != 0 ]
+then
 	if [ $1 == "--config" ]
 	then
 		shift

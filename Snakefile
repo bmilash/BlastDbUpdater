@@ -19,7 +19,9 @@
 #
 # Given that there are 3 different types of databases, the top level rule will have
 # 3 inputs, one for each database type.
-configfile: "config.yaml"
+#
+# Specifying configuration file on command line for flexibility.
+#configfile: "config.yaml"
 
 import os
 from ftplib import FTP

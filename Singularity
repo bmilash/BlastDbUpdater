@@ -10,14 +10,24 @@ Version 1.0.0
 ./config.yaml
 ./Snakefile
 
-%environment
-
 %runscript
-cd /data 
-echo "Files in /data:"
-ls /data
+# Determine configuration file.
+if [ $# = 0 ]
+then
+	# No arguments. Use the default configuration file in /data.
+	configfile=/data/config.yaml
+else
+	# Use first argument as config file. Exit if it doesn't exist.
+	configfile=$1
+	echo "Using configuration file $configfile."
+	if [ ! -f $configfile ]
+	then
+		echo "Configuration file $configfile doesn't exist. Exiting."
+		exit 1
+	fi
+fi
 echo "Generating directed acyclic graph diagram -> dag.png"
-snakemake --dag | dot -Tpng > dag.png
+snakemake -s /data/Snakefile --configfile $configfile --dag | dot -Tpng > dag.png
 echo "Generating rule graph diagram -> rulegraph.png"
 snakemake --rulegraph | dot -Tpng > rulegraph.png
 echo "Running workflow in dry-run mode."

@@ -284,7 +284,23 @@ rule download_multipart_single:
 	params: ftp_site=config['ftp_site'], ftp_dir=config['ftp_dir']
 	input: "ShadowTargz/{dbname}.{part}.tar.gz"
 	output: "Download/{dbname}.{part}.tar.gz"
-	shell: "cd Download; wget {params.ftp_site}/{params.ftp_dir}/{wildcards.dbname}.{wildcards.part}.tar.gz"
+	shell: """
+		cd Download
+		wget {params.ftp_site}/{params.ftp_dir}/{wildcards.dbname}.{wildcards.part}.tar.gz
+		wget {params.ftp_site}/{params.ftp_dir}/{wildcards.dbname}.{wildcards.part}.tar.gz.md5
+		# Test md5 checksum
+		remote=`cat {wildcards.dbname}.{wildcards.part}.tar.gz.md5`
+		local=`md5sum {wildcards.dbname}.{wildcards.part}.tar.gz`
+		if [ "$local" = "$remote" ]
+		then
+			echo "{wildcards.dbname}.{wildcards.part}.tar.gz.md5 checksum OK."
+			exit 0
+		else
+			echo "{wildcards.dbname}.{wildcards.part}.tar.gz.md5 checksum ERROR."
+			mv {wildcards.dbname}.{wildcards.part}.tar.gz ../Quarantine
+			exit 1
+		fi
+		"""
 
 # --- DNA singlepart rules ---
 
